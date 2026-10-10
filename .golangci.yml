@@ -45,8 +45,8 @@ linters:
     gocognit:
       min-complexity: 10
     funlen:
-      lines: 50
-      statements: 20
+      lines: 30
+      statements: 15
     errcheck:
       check-type-assertions: true
       check-blank: true
