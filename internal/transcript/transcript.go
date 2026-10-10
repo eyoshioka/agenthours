@@ -3,7 +3,11 @@
 package transcript
 
 import (
+	"bufio"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"time"
 )
 
@@ -18,6 +22,29 @@ type line struct {
 	Type      string    `json:"type"`
 	Timestamp time.Time `json:"timestamp"`
 	SessionID string    `json:"sessionId"`
+}
+
+// Read returns the user and assistant events in r, in file order.
+//
+// Lines that don't decode are skipped: the last line may be cut off while a
+// session is still writing, and the format is not a public API.
+func Read(r io.Reader) ([]Event, error) {
+	// bufio.Scanner is not used because a line can exceed its 64 KiB default
+	// limit (for example, a tool result holding a whole file).
+	br := bufio.NewReader(r)
+	var events []Event
+	for {
+		b, err := br.ReadBytes('\n')
+		if e, ok := parseLine(b); ok {
+			events = append(events, e)
+		}
+		if errors.Is(err, io.EOF) {
+			return events, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read transcript: %w", err)
+		}
+	}
 }
 
 // parseLine returns the event in one transcript line. ok is false when the

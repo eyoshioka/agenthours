@@ -1,0 +1,8 @@
+{"type":"permission-mode","permissionMode":"auto","sessionId":"s1"}
+{"type":"user","timestamp":"2026-10-08T13:58:09.783Z","sessionId":"s1","message":{"role":"user","content":"hello"}}
+{"type":"attachment","timestamp":"2026-10-08T13:58:10.000Z","sessionId":"s1"}
+{"type":"assistant","timestamp":"2026-10-08T13:59:00.000Z","sessionId":"s1","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}
+not json
+{"type":"user","sessionId":"s1","message":{"role":"user","content":"no timestamp"}}
+{"type":"user","timestamp":"2026-10-08T14:05:00.000Z","sessionId":"s1","message":{"role":"user","content":"last"}}
+{"type":"assistant","timestamp":"2026-10-08T14:0
