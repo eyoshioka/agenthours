@@ -1,0 +1,85 @@
+version: "2"
+
+run:
+  # Fail when go.mod or go.sum would need changes.
+  modules-download-mode: readonly
+
+linters:
+  # Start from every linter and turn off only the ones listed below, each with
+  # a reason. New linters in a golangci-lint upgrade are enabled automatically.
+  default: all
+  disable:
+    # Duplicates gocyclo, which already enforces the same limit.
+    - cyclop
+    # Deprecated in favour of the _v5 or _v2 versions.
+    - exhaustruct
+    - gomodguard
+    - wsl
+    # Requires every struct field in literals; fights Go's useful zero values.
+    - exhaustruct_v5
+    # Short names (i, t, b) are idiomatic in small scopes (Effective Go).
+    - varnamelen
+    # Blank-line style rules that gofmt and Go style don't ask for.
+    - nlreturn
+    - wsl_v5
+    # Forbids `if err := f(); err != nil`, which is idiomatic Go.
+    - noinlineerr
+    # Go has no line-length limit; gofmt doesn't wrap lines.
+    - lll
+    # White-box tests of unexported functions are idiomatic.
+    - testpackage
+    # Requiring t.Parallel in every test adds noise; tparallel still checks
+    # that it is used consistently where it is used.
+    - paralleltest
+    # TODO comments are allowed while work is in progress; track them in
+    # issues before a release.
+    - godox
+    # Named results document return values and are allowed by Go style.
+    - nonamedreturns
+    # Needs a per-project allow list; enable once there are dependencies.
+    - depguard
+
+  settings:
+    gocyclo:
+      min-complexity: 10
+    gocognit:
+      min-complexity: 10
+    funlen:
+      lines: 50
+      statements: 20
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    govet:
+      enable-all: true
+      disable:
+        # Memory layout of structs; reordering fields hurts readability for
+        # little gain in a CLI.
+        - fieldalignment
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+  exclusions:
+    rules:
+      # Table-driven tests are long by design: the table is data, not logic.
+      - path: _test\.go
+        linters:
+          - funlen
+
+formatters:
+  enable:
+    # gofumpt is a stricter superset of gofmt.
+    - gofumpt
+    - goimports
+
+issues:
+  # Show every finding: no per-linter caps, and several findings on one line.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: false
