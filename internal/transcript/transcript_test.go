@@ -3,10 +3,14 @@ package transcript
 import (
 	"bytes"
 	"errors"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 )
 
@@ -127,5 +131,108 @@ func TestReadLastLineWithoutNewline(t *testing.T) {
 	}
 	if len(got) != 1 {
 		t.Fatalf("Read() returned %d events, want 1", len(got))
+	}
+}
+
+func userLine(timestamp, session string) string {
+	return `{"type":"user","timestamp":"` + timestamp + `","sessionId":"` + session + `"}` + "\n"
+}
+
+const s1Path = "project-a/s1.jsonl"
+
+// oneTranscript returns a tree with one transcript, at s1Path.
+func oneTranscript() fstest.MapFS {
+	return fstest.MapFS{s1Path: {Data: []byte(userLine("2026-10-08T10:00:00Z", "s1"))}}
+}
+
+func TestReadFS(t *testing.T) {
+	fsys := fstest.MapFS{
+		"project-b/s2.jsonl":                 {Data: []byte(userLine("2026-10-08T11:00:00Z", "s2"))},
+		s1Path:                               {Data: []byte(userLine("2026-10-08T10:00:00Z", "s1"))},
+		"project-a/sessions-index.json":      {Data: []byte(userLine("2026-10-08T12:00:00Z", "not-a-transcript"))},
+		"project-a/s1/subagents/agent.jsonl": {Data: []byte(userLine("2026-10-08T13:00:00Z", "subagent"))},
+		"top-level.jsonl":                    {Data: []byte(userLine("2026-10-08T14:00:00Z", "top-level"))},
+	}
+
+	got, err := ReadFS(fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions := make([]string, 0, len(got))
+	for _, e := range got {
+		sessions = append(sessions, e.SessionID)
+	}
+	// Lexical order of the paths: project-a before project-b.
+	want := []string{"s1", "s2"}
+	if !slices.Equal(sessions, want) {
+		t.Errorf("ReadFS() sessions = %v, want %v", sessions, want)
+	}
+}
+
+var errOpen = errors.New("open failed")
+
+// openErrorFS lists files like the embedded MapFS but fails to open them.
+type openErrorFS struct{ fstest.MapFS }
+
+func (openErrorFS) Open(string) (fs.File, error) { return nil, errOpen }
+
+func TestReadFSOpenError(t *testing.T) {
+	fsys := openErrorFS{oneTranscript()}
+
+	_, err := ReadFS(fsys)
+	if !errors.Is(err, errOpen) {
+		t.Errorf("ReadFS() error = %v, want it to wrap %v", err, errOpen)
+	}
+}
+
+var errClose = errors.New("close failed")
+
+// brokenFile returns readErr from Read and closeErr from Close; nil readErr
+// means an empty file.
+type brokenFile struct {
+	fs.File
+
+	readErr, closeErr error
+}
+
+func (f brokenFile) Read([]byte) (int, error) {
+	if f.readErr != nil {
+		return 0, f.readErr
+	}
+	return 0, io.EOF
+}
+
+func (f brokenFile) Close() error { return f.closeErr }
+
+// brokenFileFS lists files like the embedded MapFS but opens each as file.
+type brokenFileFS struct {
+	fstest.MapFS
+
+	file brokenFile
+}
+
+func (b brokenFileFS) Open(string) (fs.File, error) { return b.file, nil }
+
+func TestReadFSReadError(t *testing.T) {
+	fsys := brokenFileFS{oneTranscript(), brokenFile{readErr: errDisk}}
+
+	_, err := ReadFS(fsys)
+	if !errors.Is(err, errDisk) {
+		t.Fatalf("ReadFS() error = %v, want it to wrap %v", err, errDisk)
+	}
+	if !strings.Contains(err.Error(), s1Path) {
+		t.Errorf("ReadFS() error = %v, want it to name %s", err, s1Path)
+	}
+}
+
+func TestReadFSCloseError(t *testing.T) {
+	fsys := brokenFileFS{oneTranscript(), brokenFile{closeErr: errClose}}
+
+	_, err := ReadFS(fsys)
+	if !errors.Is(err, errClose) {
+		t.Fatalf("ReadFS() error = %v, want it to wrap %v", err, errClose)
+	}
+	if !strings.Contains(err.Error(), s1Path) {
+		t.Errorf("ReadFS() error = %v, want it to name %s", err, s1Path)
 	}
 }

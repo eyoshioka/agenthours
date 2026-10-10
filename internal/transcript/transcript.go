@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"time"
 )
 
@@ -45,6 +46,42 @@ func Read(r io.Reader) ([]Event, error) {
 			return nil, fmt.Errorf("read transcript: %w", err)
 		}
 	}
+}
+
+// ReadFS returns the events of every transcript in fsys, laid out as
+// <project>/<session>.jsonl like ~/.claude/projects. Files are read in
+// lexical order; deeper files, such as subagent transcripts, are not read.
+func ReadFS(fsys fs.FS) ([]Event, error) {
+	names, err := fs.Glob(fsys, "*/*.jsonl")
+	if err != nil {
+		return nil, fmt.Errorf("list transcripts: %w", err)
+	}
+	var events []Event
+	for _, name := range names {
+		es, err := readFile(fsys, name)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, es...)
+	}
+	return events, nil
+}
+
+func readFile(fsys fs.FS, name string) (events []Event, err error) {
+	f, err := fsys.Open(name)
+	if err != nil {
+		return nil, fmt.Errorf("open transcript: %w", err)
+	}
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			err = errors.Join(err, fmt.Errorf("close %s: %w", name, cerr))
+		}
+	}()
+	events, err = Read(f)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	return events, nil
 }
 
 // parseLine returns the event in one transcript line. ok is false when the
