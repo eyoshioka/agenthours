@@ -1,3 +1,3 @@
-module github.com/eyoshioka/ccgrass
+module github.com/eyoshioka/agenthours
 
 go 1.26.8

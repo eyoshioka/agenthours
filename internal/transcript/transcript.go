@@ -17,7 +17,7 @@ type Event struct {
 	SessionID string
 }
 
-// line holds the fields of a transcript line that ccgrass uses.
+// line holds the fields of a transcript line that agenthours uses.
 type line struct {
 	Type      string    `json:"type"`
 	Timestamp time.Time `json:"timestamp"`

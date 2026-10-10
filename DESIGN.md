@@ -1,6 +1,29 @@
-# ccgrass design
+# agenthours design
 
-Turn Claude Code session logs into a daily "learning log" contribution graph.
+Turn coding-agent session logs into a contribution graph of the hours you
+spend working with the agent. Claude Code is the first supported agent.
+
+## Positioning
+
+Existing tools (surveyed 2026-10-10) mostly count tokens, sessions or cost:
+ccusage (18 agents, tokens and cost), ccheatmap, cc-journal and
+claude-code-heatmap (token or session heatmaps), and
+claude-code-usage-analytics (limits, multi-device sync). Only monitorme
+tracks time, through hooks from installation onwards, classified by the
+folder a session starts in. None of them outputs an image to embed.
+
+agenthours differs in:
+
+- Measuring the human's active time, not the agent's tokens.
+- Rendering a static SVG (and JSON) to embed in a README, a GitHub profile
+  or a personal site.
+- Filtering by the paths a session touches, so only chosen work counts.
+- Reading the logs already on disk, so sessions from before installation count
+  as far back as the logs go.
+- Shipping as a single Go binary that stores only daily aggregates.
+
+Out of scope: tokens and cost, live dashboards, multi-device sync and LLM
+summaries.
 
 ## Pipeline
 
@@ -32,14 +55,14 @@ Unknown event types and fields are ignored, because the format is not a public A
 
 ## Classification
 
-A session is tracked when any tool use touches one of the `--path` prefixes (for example `~/code/oss`, `~/code/zenn`, `~/code/ccgrass`): `file_path` starting with the prefix, or a Bash `command` containing it. The whole session counts. Sessions are launched from `~/code`, so `cwd` cannot be used.
+A session is tracked when any tool use touches one of the `--path` prefixes (for example `~/code/oss`, `~/code/zenn`, `~/code/agenthours`): `file_path` starting with the prefix, or a Bash `command` containing it. The whole session counts. Sessions are launched from `~/code`, so `cwd` cannot be used.
 
 ## Store
 
 Claude Code deletes transcripts after 30 days (`cleanupPeriodDays`), so the tool keeps its own aggregates:
 
 ```json
-{"days": {"2026-10-08": {"minutes": 95, "repos": ["oss", "ccgrass"]}}}
+{"days": {"2026-10-08": {"minutes": 95, "repos": ["oss", "agenthours"]}}}
 ```
 
 - Only aggregates are stored. Never store message content.
