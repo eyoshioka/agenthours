@@ -17,9 +17,10 @@ import (
 func DailyActive(times []time.Time, maxBreak time.Duration, loc *time.Location) map[string]time.Duration {
 	sorted := slices.SortedFunc(slices.Values(times), time.Time.Compare)
 	daily := make(map[string]time.Duration)
-	for i := 1; i < len(sorted); i++ {
-		if sorted[i].Sub(sorted[i-1]) <= maxBreak {
-			addSpan(daily, sorted[i-1].In(loc), sorted[i].In(loc))
+	for i := range len(sorted) - 1 {
+		start, end := sorted[i], sorted[i+1]
+		if end.Sub(start) <= maxBreak {
+			addSpan(daily, start.In(loc), end.In(loc))
 		}
 	}
 	return daily
