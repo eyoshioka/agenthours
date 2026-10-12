@@ -1,5 +1,29 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
-  "semanticCommits": "enabled"
+  "semanticCommits": "enabled",
+  "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "govulncheck version in the Makefile",
+      "managerFilePatterns": ["/^Makefile$/"],
+      "matchStrings": ["GOVULNCHECK_VERSION := (?<currentValue>v\\S+)"],
+      "depNameTemplate": "golang.org/x/vuln",
+      "datasourceTemplate": "go"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Merge low-risk updates once CI passes",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "automerge": true
+    },
+    {
+      "description": "The Go version changes the language; review it",
+      "matchDepNames": ["go"],
+      "automerge": false
+    }
+  ]
 }
