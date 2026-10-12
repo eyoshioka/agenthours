@@ -7,8 +7,29 @@ worked. agenthours measures your active time with the agent instead, and
 renders it as a calendar heatmap you can embed in a README, a GitHub profile
 or a personal site.
 
-> **Status: early development.** Nothing is usable yet. See
+> **Status: early development.** The CLI prints minutes per day for all
+> Claude Code sessions; filtering, history and the SVG are not there yet. See
 > [DESIGN.md](DESIGN.md) for the plan and the milestones.
+
+## Usage
+
+```sh
+go install github.com/eyoshioka/agenthours@latest
+agenthours
+```
+
+```
+2026-10-08	547
+2026-10-09	149
+```
+
+One line per day: the date, a tab, and the active minutes (rounded down).
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-dir` | `~/.claude/projects` | Claude Code projects directory |
+| `-break` | `15m` | Longest gap between messages that still counts as active |
+| `-tz` | `Asia/Tokyo` | Time zone for day boundaries |
 
 ## How it works
 
@@ -23,7 +44,6 @@ or a personal site.
 
 ## Planned
 
-- `agenthours` CLI that prints minutes per day
 - Filtering by touched paths
 - A local store that keeps history after the agent deletes old logs
 - SVG and JSON output for embedding
