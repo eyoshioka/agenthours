@@ -8,7 +8,17 @@ import (
 	"testing"
 )
 
-const dirFlag = "-dir"
+const (
+	dirFlag   = "-dir"
+	storeFlag = "-store"
+)
+
+// tempStore returns a store path in a new temporary directory, so tests never
+// touch the real store.
+func tempStore(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(t.TempDir(), "days.json")
+}
 
 // writeProjects creates dir/<project>/<session>.jsonl with the given lines and
 // returns dir.
@@ -32,7 +42,7 @@ func TestRun(t *testing.T) {
 `)
 	var out bytes.Buffer
 
-	if err := run([]string{dirFlag, dir}, &out); err != nil {
+	if err := run([]string{dirFlag, dir, storeFlag, tempStore(t)}, &out); err != nil {
 		t.Fatal(err)
 	}
 	want := "2026-10-08\t10\n2026-10-09\t5\n"
@@ -51,7 +61,7 @@ func TestRunFlags(t *testing.T) {
 `)
 	var out bytes.Buffer
 
-	if err := run([]string{dirFlag, dir, "-break", "10m", "-tz", "UTC"}, &out); err != nil {
+	if err := run([]string{dirFlag, dir, storeFlag, tempStore(t), "-break", "10m", "-tz", "UTC"}, &out); err != nil {
 		t.Fatal(err)
 	}
 	want := "2026-10-08\t5\n"
@@ -74,6 +84,8 @@ func TestRunErrors(t *testing.T) {
 		{name: "unknown flag", args: []string{"-nope"}},
 		{name: "unknown time zone", args: []string{"-tz", "Nowhere/City"}},
 		{name: "missing directory", args: []string{dirFlag, filepath.Join(t.TempDir(), "missing")}},
+		{name: "broken store", args: []string{dirFlag, t.TempDir(), storeFlag, brokenStore(t)}},
+		{name: "unwritable store", args: []string{dirFlag, t.TempDir(), storeFlag, readOnlyStore(t)}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -95,8 +107,92 @@ func TestRunWriteError(t *testing.T) {
 {"type":"assistant","timestamp":"2026-10-08T10:05:00Z","sessionId":"s1"}
 `)
 
-	err := run([]string{dirFlag, dir}, failingWriter{})
+	err := run([]string{dirFlag, dir, storeFlag, tempStore(t)}, failingWriter{})
 	if !errors.Is(err, errWrite) {
 		t.Errorf("run() error = %v, want it to wrap %v", err, errWrite)
+	}
+}
+
+// brokenStore returns the path of a store file that is not valid JSON.
+func brokenStore(t *testing.T) string {
+	t.Helper()
+	name := tempStore(t)
+	if err := os.WriteFile(name, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return name
+}
+
+// readOnlyStore returns a store path, not yet created, in a directory that
+// can't be written to.
+func readOnlyStore(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o500); err != nil { //nolint:gosec // G302: a directory needs x to be searched.
+		t.Fatal(err)
+	}
+	return filepath.Join(dir, "days.json")
+}
+
+func TestRunKeepsDeletedDays(t *testing.T) {
+	storeFile := tempStore(t)
+	oct8 := writeProjects(t, `{"type":"user","timestamp":"2026-10-08T01:00:00Z","sessionId":"s1"}
+{"type":"assistant","timestamp":"2026-10-08T01:10:00Z","sessionId":"s1"}
+`)
+	if err := run([]string{dirFlag, oct8, storeFlag, storeFile}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	// Oct 8's log is gone; Oct 9 is new.
+	oct9 := writeProjects(t, `{"type":"user","timestamp":"2026-10-09T01:00:00Z","sessionId":"s2"}
+{"type":"assistant","timestamp":"2026-10-09T01:03:00Z","sessionId":"s2"}
+`)
+	var out bytes.Buffer
+
+	if err := run([]string{dirFlag, oct9, storeFlag, storeFile}, &out); err != nil {
+		t.Fatal(err)
+	}
+	want := "2026-10-08\t10\n2026-10-09\t3\n"
+	if got := out.String(); got != want {
+		t.Errorf("output = %q, want %q", got, want)
+	}
+}
+
+func TestRunKeepsSettingsApart(t *testing.T) {
+	storeFile := tempStore(t)
+	// Two messages 30 minutes apart: a break by default, active under -break 1h.
+	dir := writeProjects(t, `{"type":"user","timestamp":"2026-10-08T01:00:00Z","sessionId":"s1"}
+{"type":"assistant","timestamp":"2026-10-08T01:30:00Z","sessionId":"s1"}
+`)
+	if err := run([]string{dirFlag, dir, storeFlag, storeFile, "-break", "1h"}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+
+	if err := run([]string{dirFlag, dir, storeFlag, storeFile}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "" {
+		t.Errorf("output with the default break = %q, want none", got)
+	}
+}
+
+func TestDataHome(t *testing.T) {
+	home := filepath.Join(string(filepath.Separator), "home", "me")
+	xdg := filepath.Join(string(filepath.Separator), "xdg")
+	fallback := filepath.Join(home, ".local", "share")
+	tests := []struct {
+		name, env, want string
+	}{
+		{name: "unset", env: "", want: fallback},
+		{name: "absolute", env: xdg, want: xdg},
+		{name: "relative is ignored", env: "data", want: fallback},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("XDG_DATA_HOME", tt.env)
+			if got := dataHome(home); got != tt.want {
+				t.Errorf("dataHome(%q) = %q, want %q", home, got, tt.want)
+			}
+		})
 	}
 }
