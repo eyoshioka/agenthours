@@ -32,7 +32,7 @@ summaries.
   → parse events (timestamp, session, tool inputs)
   → classify sessions (does it touch a tracked path?)
   → active minutes per day
-  → merge into the store (data/days.json)
+  → merge into the store ($XDG_DATA_HOME/agenthours/days.json)
   → render (SVG heatmap, JSON for the portfolio site)
 ```
 
@@ -62,10 +62,13 @@ A session is tracked when any tool use touches one of the `--path` prefixes (for
 Claude Code deletes transcripts after 30 days (`cleanupPeriodDays`), so the tool keeps its own aggregates:
 
 ```json
-{"days": {"2026-10-08": {"minutes": 95, "repos": ["oss", "agenthours"]}}}
+{"version": 1, "totals": [{"paths": [], "days": {"2026-10-08": 95}}]}
 ```
 
-- Only aggregates are stored. Never store message content.
+- Only dates and minutes are stored. Never store message content.
+- Totals are kept per set of `--path` filters (`[]` is unfiltered), so filtered and unfiltered totals don't mix.
+- Writes go to a temporary file that is renamed over the store, so an interrupted run never leaves a broken file.
+- A file with another `version` is an error rather than being overwritten.
 - Each run recomputes the days that still have transcripts and keeps older days as they are. If a recomputed day is lower than the stored value (part of it was already deleted), keep the larger one.
 
 ## Grass
