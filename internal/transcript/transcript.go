@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"strings"
 	"time"
 )
 
@@ -16,6 +17,9 @@ import (
 type Event struct {
 	Time      time.Time
 	SessionID string
+	// Paths are the absolute or ~/ paths the message's tool uses touch, as
+	// written in the transcript (~ is not expanded).
+	Paths []string
 }
 
 // line holds the fields of a transcript line that agenthours uses.
@@ -23,6 +27,22 @@ type line struct {
 	Type      string    `json:"type"`
 	Timestamp time.Time `json:"timestamp"`
 	SessionID string    `json:"sessionId"`
+	Message   struct {
+		// Content is a string for plain user messages and an array of
+		// items otherwise; only arrays can hold tool uses.
+		Content json.RawMessage `json:"content"`
+	} `json:"message"`
+}
+
+// contentItem holds the tool-use inputs that can name a path. Only tool uses
+// have an input; other items (text, tool results) decode to empty fields.
+type contentItem struct {
+	Input struct {
+		FilePath     string `json:"file_path"`     //nolint:tagliatelle // Claude Code's tool inputs are snake_case.
+		NotebookPath string `json:"notebook_path"` //nolint:tagliatelle // Claude Code's tool inputs are snake_case.
+		Path         string `json:"path"`
+		Command      string `json:"command"`
+	} `json:"input"`
 }
 
 // Read returns the user and assistant events in r, in file order.
@@ -97,5 +117,44 @@ func parseLine(b []byte) (e Event, ok bool) {
 	if l.Timestamp.IsZero() {
 		return Event{}, false
 	}
-	return Event{Time: l.Timestamp, SessionID: l.SessionID}, true
+	return Event{Time: l.Timestamp, SessionID: l.SessionID, Paths: toolPaths(l.Message.Content)}, true
+}
+
+// toolPaths returns the paths named by the tool uses in a message's content.
+func toolPaths(content json.RawMessage) []string {
+	var items []contentItem
+	if err := json.Unmarshal(content, &items); err != nil {
+		return nil // A plain string, or no content.
+	}
+	var paths []string
+	for _, it := range items {
+		for _, p := range []string{it.Input.FilePath, it.Input.NotebookPath, it.Input.Path} {
+			if isPath(p) {
+				paths = append(paths, p)
+			}
+		}
+		paths = append(paths, commandPaths(it.Input.Command)...)
+	}
+	return paths
+}
+
+// commandPaths returns the words in a shell command that look like absolute
+// or ~/ paths. Words are split at whitespace, quotes and shell operators, so
+// a quoted path with spaces is cut at the first space.
+func commandPaths(command string) []string {
+	var paths []string
+	for _, w := range strings.FieldsFunc(command, isWordBreak) {
+		if isPath(w) {
+			paths = append(paths, w)
+		}
+	}
+	return paths
+}
+
+func isWordBreak(r rune) bool {
+	return strings.ContainsRune(" \t\n'\"`;&|()<>=", r)
+}
+
+func isPath(s string) bool {
+	return strings.HasPrefix(s, "/") || strings.HasPrefix(s, "~/") || s == "~"
 }
