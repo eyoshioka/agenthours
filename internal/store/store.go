@@ -29,11 +29,26 @@ type Store struct {
 	Totals  []Totals `json:"totals"`
 }
 
-// Totals are the minutes per day for one set of path filters, so filtered and
-// unfiltered totals don't mix. Days are keyed by date in time.DateOnly format.
+// Key is the set of settings that a day's minutes depend on. Totals computed
+// with different settings are kept apart, because the larger-value-wins merge
+// could never take back minutes that one run with, say, a longer break added.
+type Key struct {
+	// Paths are the path filters; empty means every session. Their order
+	// doesn't matter.
+	Paths []string `json:"paths"`
+	// Break is the longest gap counted as active, as time.Duration.String
+	// formats it.
+	Break string `json:"break"`
+	// TZ is the name of the time zone for day boundaries.
+	TZ string `json:"tz"`
+}
+
+// Totals are the minutes per day for one Key. Days are keyed by date in
+// time.DateOnly format.
 type Totals struct {
-	Paths []string       `json:"paths"`
-	Days  map[string]int `json:"days"`
+	Key
+
+	Days map[string]int `json:"days"`
 }
 
 // Load reads the store at name. A missing file is an empty store.
@@ -55,20 +70,21 @@ func Load(name string) (*Store, error) {
 	return &s, nil
 }
 
-// Merge folds recomputed minutes per day into the totals for paths and returns
+// Merge folds recomputed minutes per day into the totals for key and returns
 // the merged days. Days that are not recomputed keep their stored value. For a
 // day in both, the larger value wins, because a lower recomputed value means
-// part of that day's transcripts was already deleted. The order of paths does
-// not matter. The returned map is the store's own, so changes to it are saved.
-func (s *Store) Merge(paths []string, recomputed map[string]int) map[string]int {
-	t := s.totals(paths)
+// part of that day's transcripts was already deleted. The returned map is the
+// store's own, so changes to it are saved.
+func (s *Store) Merge(key Key, recomputed map[string]int) map[string]int {
+	t := s.totals(key)
 	for day, minutes := range recomputed {
 		t.Days[day] = max(t.Days[day], minutes)
 	}
 	return t.Days
 }
 
-// Save writes s to name, creating its directory if needed.
+// Save writes s to name, creating its directory if needed. When name is a
+// symbolic link, the file it points to is replaced, so the link is kept.
 func (s *Store) Save(name string) error {
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
@@ -77,25 +93,33 @@ func (s *Store) Save(name string) error {
 	if err = os.MkdirAll(filepath.Dir(name), dirPerm); err != nil {
 		return fmt.Errorf("create store directory: %w", err)
 	}
+	if target, err := filepath.EvalSymlinks(name); err == nil {
+		name = target
+	}
 	return replace(name, append(data, '\n'))
 }
 
-// totals returns the entry for paths, adding an empty one if there is none.
-func (s *Store) totals(paths []string) *Totals {
-	key := slices.Sorted(slices.Values(paths))
+// totals returns the entry for key, adding an empty one if there is none.
+func (s *Store) totals(key Key) *Totals {
+	key.Paths = slices.Sorted(slices.Values(key.Paths))
 	for i := range s.Totals {
-		if t := &s.Totals[i]; slices.Equal(t.Paths, key) {
+		if t := &s.Totals[i]; t.equal(key) {
 			if t.Days == nil { // "days": null or missing in the file.
 				t.Days = make(map[string]int)
 			}
 			return t
 		}
 	}
-	if key == nil {
-		key = []string{} // Written as [] rather than null.
+	if key.Paths == nil {
+		key.Paths = []string{} // Written as [] rather than null.
 	}
-	s.Totals = append(s.Totals, Totals{Paths: key, Days: make(map[string]int)})
+	s.Totals = append(s.Totals, Totals{Key: key, Days: make(map[string]int)})
 	return &s.Totals[len(s.Totals)-1]
+}
+
+// equal reports whether t is for key, whose paths must be sorted.
+func (t *Totals) equal(key Key) bool {
+	return t.Break == key.Break && t.TZ == key.TZ && slices.Equal(t.Paths, key.Paths)
 }
 
 // replace writes data to a temporary file in name's directory and renames it

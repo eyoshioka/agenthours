@@ -51,7 +51,7 @@ func run(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	daily, err := mergeStore(cfg.store, minutes(activity.DailyActive(times, cfg.maxBreak, cfg.loc)))
+	daily, err := mergeStore(cfg, minutes(activity.DailyActive(times, cfg.maxBreak, cfg.loc)))
 	if err != nil {
 		return err
 	}
@@ -121,15 +121,16 @@ func minutes(daily map[string]time.Duration) map[string]int {
 }
 
 // mergeStore merges the recomputed minutes into the store file and returns
-// every stored day.
-func mergeStore(name string, recomputed map[string]int) (map[string]int, error) {
-	s, err := store.Load(name)
+// every stored day for the same settings.
+func mergeStore(cfg config, recomputed map[string]int) (map[string]int, error) {
+	s, err := store.Load(cfg.store)
 	if err != nil {
 		return nil, fmt.Errorf("load store: %w", err)
 	}
-	// No path filters yet; -path (#15) will pass its prefixes here.
-	daily := s.Merge(nil, recomputed)
-	if err := s.Save(name); err != nil {
+	// No path filters yet; -path (#15) will add its prefixes to the key.
+	key := store.Key{Break: cfg.maxBreak.String(), TZ: cfg.loc.String()}
+	daily := s.Merge(key, recomputed)
+	if err := s.Save(cfg.store); err != nil {
 		return nil, fmt.Errorf("save store: %w", err)
 	}
 	return daily, nil

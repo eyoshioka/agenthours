@@ -62,12 +62,12 @@ A session is tracked when any tool use touches one of the `--path` prefixes (for
 Claude Code deletes transcripts after 30 days (`cleanupPeriodDays`), so the tool keeps its own aggregates:
 
 ```json
-{"version": 1, "totals": [{"paths": [], "days": {"2026-10-08": 95}}]}
+{"version": 1, "totals": [{"paths": [], "break": "15m0s", "tz": "Asia/Tokyo", "days": {"2026-10-08": 95}}]}
 ```
 
 - Only dates and minutes are stored. Never store message content.
-- Totals are kept per set of `--path` filters (`[]` is unfiltered), so filtered and unfiltered totals don't mix.
-- Writes go to a temporary file that is renamed over the store, so an interrupted run never leaves a broken file.
+- Totals are kept per set of settings: the `--path` filters (`[]` is unfiltered, order doesn't matter), `--break` and `--tz`. Otherwise one run with a longer break would raise days for good, because the larger value wins.
+- Writes go to a temporary file that is renamed over the store, so an interrupted run never leaves a broken file. A symlinked store is written through the link.
 - A file with another `version` is an error rather than being overwritten.
 - Each run recomputes the days that still have transcripts and keeps older days as they are. If a recomputed day is lower than the stored value (part of it was already deleted), keep the larger one.
 

@@ -8,11 +8,17 @@ import (
 	"testing"
 )
 
-// Fixture dates and minutes.
+// Fixture dates.
 const (
 	oct8 = "2026-10-08"
 	oct9 = "2026-10-09"
 )
+
+// fixtureKey returns the fixture settings: no path filters, a 15-minute break
+// and Tokyo time.
+func fixtureKey() Key {
+	return Key{Paths: []string{}, Break: "15m0s", TZ: "Asia/Tokyo"}
+}
 
 func writeFile(t *testing.T, content string) string {
 	t.Helper()
@@ -73,37 +79,62 @@ func TestMerge(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Store{Version: Version, Totals: []Totals{{Paths: []string{}, Days: map[string]int{oct8: stored}}}}
-			if got := s.Merge(nil, tt.recomputed); !maps.Equal(got, tt.want) {
+			s := &Store{Version: Version, Totals: []Totals{{Key: fixtureKey(), Days: map[string]int{oct8: stored}}}}
+			if got := s.Merge(fixtureKey(), tt.recomputed); !maps.Equal(got, tt.want) {
 				t.Errorf("Merge() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestMergeKeepsPathSetsApart(t *testing.T) {
-	const all, filtered = 50, 10
-	s := &Store{Version: Version}
-	s.Merge(nil, map[string]int{oct8: all})
-	s.Merge([]string{"b", "a"}, map[string]int{oct8: filtered})
+func TestMergeKeepsKeysApart(t *testing.T) {
+	const stored, other = 50, 10
+	base := fixtureKey()
+	tests := []struct {
+		name string
+		key  Key
+	}{
+		{name: "paths", key: Key{Paths: []string{"b", "a"}, Break: base.Break, TZ: base.TZ}},
+		{name: "break", key: Key{Paths: base.Paths, Break: "1h0m0s", TZ: base.TZ}},
+		{name: "time zone", key: Key{Paths: base.Paths, Break: base.Break, TZ: "UTC"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Store{Version: Version}
+			s.Merge(base, map[string]int{oct8: stored})
 
-	// Same set in another order.
-	got := s.Merge([]string{"a", "b"}, nil)
-	if want := map[string]int{oct8: filtered}; !maps.Equal(got, want) {
+			got := s.Merge(tt.key, map[string]int{oct8: other})
+			if want := map[string]int{oct8: other}; !maps.Equal(got, want) {
+				t.Errorf("Merge(%+v) = %v, want %v", tt.key, got, want)
+			}
+			if got := s.Merge(base, nil); !maps.Equal(got, map[string]int{oct8: stored}) {
+				t.Errorf("Merge(%+v) afterwards = %v, want %d minutes", base, got, stored)
+			}
+		})
+	}
+}
+
+func TestMergePathOrder(t *testing.T) {
+	const minutes = 10
+	s := &Store{Version: Version}
+	s.Merge(Key{Paths: []string{"b", "a"}}, map[string]int{oct8: minutes})
+
+	got := s.Merge(Key{Paths: []string{"a", "b"}}, nil)
+	if want := map[string]int{oct8: minutes}; !maps.Equal(got, want) {
 		t.Errorf("Merge(a, b) = %v, want %v", got, want)
 	}
-	if len(s.Totals) != 2 {
-		t.Errorf("len(Totals) = %d, want 2", len(s.Totals))
+	if len(s.Totals) != 1 {
+		t.Errorf("len(Totals) = %d, want 1", len(s.Totals))
 	}
 }
 
 func TestMergeNullDays(t *testing.T) {
 	const minutes = 5
-	s, err := Load(writeFile(t, `{"version":1,"totals":[{"paths":[],"days":null}]}`))
+	s, err := Load(writeFile(t, `{"version":1,"totals":[{"paths":[],"break":"15m0s","tz":"Asia/Tokyo","days":null}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := s.Merge(nil, map[string]int{oct8: minutes})
+	got := s.Merge(fixtureKey(), map[string]int{oct8: minutes})
 	if want := map[string]int{oct8: minutes}; !maps.Equal(got, want) {
 		t.Errorf("Merge() = %v, want %v", got, want)
 	}
@@ -114,7 +145,7 @@ func TestSaveRoundTrip(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "new")
 	name := filepath.Join(dir, "days.json")
 	s := &Store{Version: Version}
-	s.Merge(nil, map[string]int{oct8: minutes})
+	s.Merge(fixtureKey(), map[string]int{oct8: minutes})
 
 	if err := s.Save(name); err != nil {
 		t.Fatal(err)
@@ -123,7 +154,7 @@ func TestSaveRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := loaded.Merge(nil, nil), (map[string]int{oct8: minutes}); !maps.Equal(got, want) {
+	if got, want := loaded.Merge(fixtureKey(), nil), (map[string]int{oct8: minutes}); !maps.Equal(got, want) {
 		t.Errorf("days after reload = %v, want %v", got, want)
 	}
 	assertOnlyFile(t, dir, "days.json")
@@ -133,7 +164,7 @@ func TestSaveFormat(t *testing.T) {
 	const minutes = 95
 	name := filepath.Join(t.TempDir(), "days.json")
 	s := &Store{Version: Version}
-	s.Merge(nil, map[string]int{oct8: minutes})
+	s.Merge(fixtureKey(), map[string]int{oct8: minutes})
 
 	if err := s.Save(name); err != nil {
 		t.Fatal(err)
@@ -147,6 +178,8 @@ func TestSaveFormat(t *testing.T) {
   "totals": [
     {
       "paths": [],
+      "break": "15m0s",
+      "tz": "Asia/Tokyo",
       "days": {
         "2026-10-08": 95
       }
@@ -156,6 +189,35 @@ func TestSaveFormat(t *testing.T) {
 `
 	if got := string(data); got != want {
 		t.Errorf("file =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestSaveKeepsSymlink(t *testing.T) {
+	const minutes = 95
+	dir := t.TempDir()
+	target := filepath.Join(dir, "synced.json")
+	link := filepath.Join(dir, "days.json")
+	if err := os.WriteFile(target, []byte(`{"version":1,"totals":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	s := &Store{Version: Version}
+	s.Merge(fixtureKey(), map[string]int{oct8: minutes})
+
+	if err := s.Save(link); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("Lstat(%s) = %v, %v, want a symlink", link, fi, err)
+	}
+	loaded, err := Load(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := loaded.Merge(fixtureKey(), nil), (map[string]int{oct8: minutes}); !maps.Equal(got, want) {
+		t.Errorf("days in the link's target = %v, want %v", got, want)
 	}
 }
 

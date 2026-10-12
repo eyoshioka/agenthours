@@ -157,6 +157,25 @@ func TestRunKeepsDeletedDays(t *testing.T) {
 	}
 }
 
+func TestRunKeepsSettingsApart(t *testing.T) {
+	storeFile := tempStore(t)
+	// Two messages 30 minutes apart: a break by default, active under -break 1h.
+	dir := writeProjects(t, `{"type":"user","timestamp":"2026-10-08T01:00:00Z","sessionId":"s1"}
+{"type":"assistant","timestamp":"2026-10-08T01:30:00Z","sessionId":"s1"}
+`)
+	if err := run([]string{dirFlag, dir, storeFlag, storeFile, "-break", "1h"}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+
+	if err := run([]string{dirFlag, dir, storeFlag, storeFile}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "" {
+		t.Errorf("output with the default break = %q, want none", got)
+	}
+}
+
 func TestDataHome(t *testing.T) {
 	home := filepath.Join(string(filepath.Separator), "home", "me")
 	xdg := filepath.Join(string(filepath.Separator), "xdg")

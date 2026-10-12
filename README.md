@@ -45,7 +45,8 @@ One line per day: the date, a tab, and the active minutes (rounded down).
 - Claude Code deletes logs after 30 days by default, so each run merges the
   daily totals into a store file and prints every stored day. A day that
   still has logs is recomputed; when the result is lower than the stored
-  value (some of its logs are gone), the stored value is kept.
+  value (some of its logs are gone), the stored value is kept. Totals for
+  different `-break` or `-tz` values are stored separately.
 - Stores only dates and minutes. Message content never leaves the logs.
 
 ## Planned
