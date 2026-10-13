@@ -34,6 +34,44 @@ func TestParseLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name:   "typed prompt",
+			line:   `{"type":"user","timestamp":"2026-10-08T13:58:09Z","sessionId":"s1","message":{"content":"fix it"}}`,
+			want:   Event{Time: time.Date(2026, 10, 8, 13, 58, 9, 0, time.UTC), SessionID: "s1"},
+			wantOK: true,
+		},
+		{
+			name:   "prompt with text items",
+			line:   `{"type":"user","timestamp":"2026-10-08T13:58:09Z","sessionId":"s1","message":{"content":[{"type":"text","text":"fix it"}]}}`,
+			want:   Event{Time: time.Date(2026, 10, 8, 13, 58, 9, 0, time.UTC), SessionID: "s1"},
+			wantOK: true,
+		},
+		{
+			name: "tool result",
+			line: `{"type":"user","timestamp":"2026-10-08T13:58:09Z","sessionId":"s1","message":{"content":[{"type":"tool_result","content":"ok"}]}}`,
+		},
+		{
+			name: "several tool results",
+			line: `{"type":"user","timestamp":"2026-10-08T13:58:09Z","sessionId":"s1","message":{"content":[{"type":"tool_result"},{"type":"tool_result"}]}}`,
+		},
+		{
+			name:   "tool result and typed text",
+			line:   `{"type":"user","timestamp":"2026-10-08T13:58:09Z","sessionId":"s1","message":{"content":[{"type":"tool_result"},{"type":"text","text":"stop"}]}}`,
+			want:   Event{Time: time.Date(2026, 10, 8, 13, 58, 9, 0, time.UTC), SessionID: "s1"},
+			wantOK: true,
+		},
+		{
+			name:   "empty content array",
+			line:   `{"type":"user","timestamp":"2026-10-08T13:58:09Z","sessionId":"s1","message":{"content":[]}}`,
+			want:   Event{Time: time.Date(2026, 10, 8, 13, 58, 9, 0, time.UTC), SessionID: "s1"},
+			wantOK: true,
+		},
+		{
+			name:   "assistant answer holding a tool result type",
+			line:   `{"type":"assistant","timestamp":"2026-10-08T13:58:09Z","sessionId":"s1","message":{"content":[{"type":"tool_result"}]}}`,
+			want:   Event{Time: time.Date(2026, 10, 8, 13, 58, 9, 0, time.UTC), SessionID: "s1"},
+			wantOK: true,
+		},
+		{
 			name: "other event type",
 			line: `{"type":"attachment","timestamp":"2026-10-08T13:58:10Z","sessionId":"s1"}`,
 		},
@@ -64,8 +102,9 @@ func TestParseLine(t *testing.T) {
 }
 
 // The fixture also holds lines that must be skipped: a non-message event, an
-// attachment, a line that isn't JSON, a message without a timestamp, and a
-// last line cut off without a newline.
+// attachment, a tool result, a line that isn't JSON, a message without a
+// timestamp, and a last line cut off without a newline. A tool result sent
+// together with typed text still counts.
 func TestRead(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("testdata", "session.jsonl"))
 	if err != nil {
@@ -79,6 +118,7 @@ func TestRead(t *testing.T) {
 	want := []Event{
 		{Time: time.Date(2026, 10, 8, 13, 58, 9, 783_000_000, time.UTC), SessionID: "s1"},
 		{Time: time.Date(2026, 10, 8, 13, 59, 0, 0, time.UTC), SessionID: "s1"},
+		{Time: time.Date(2026, 10, 8, 14, 2, 0, 0, time.UTC), SessionID: "s1"},
 		{Time: time.Date(2026, 10, 8, 14, 5, 0, 0, time.UTC), SessionID: "s1"},
 	}
 	if len(got) != len(want) {
