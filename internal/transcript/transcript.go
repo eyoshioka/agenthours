@@ -12,7 +12,8 @@ import (
 	"time"
 )
 
-// Event is one user or assistant message in a transcript.
+// Event is one user or assistant message in a transcript. Tool results,
+// which Claude Code records as user messages, are not events.
 type Event struct {
 	Time      time.Time
 	SessionID string
@@ -23,9 +24,17 @@ type line struct {
 	Type      string    `json:"type"`
 	Timestamp time.Time `json:"timestamp"`
 	SessionID string    `json:"sessionId"`
+	Message   struct {
+		// Content is a string for a typed prompt, or an array of items.
+		Content json.RawMessage `json:"content"`
+	} `json:"message"`
 }
 
-// Read returns the user and assistant events in r, in file order.
+// toolResultType is the content item type of a tool's output.
+const toolResultType = "tool_result"
+
+// Read returns the user and assistant events in r, in file order, without
+// tool results.
 //
 // Lines that don't decode are skipped: the last line may be cut off while a
 // session is still writing, and the format is not a public API.
@@ -85,7 +94,8 @@ func readFile(fsys fs.FS, name string) (events []Event, err error) {
 }
 
 // parseLine returns the event in one transcript line. ok is false when the
-// line is not a user or assistant message, or doesn't decode.
+// line is not a user or assistant message, is a tool result, or doesn't
+// decode.
 func parseLine(b []byte) (e Event, ok bool) {
 	var l line
 	if err := json.Unmarshal(b, &l); err != nil {
@@ -97,5 +107,25 @@ func parseLine(b []byte) (e Event, ok bool) {
 	if l.Timestamp.IsZero() {
 		return Event{}, false
 	}
+	if l.Type == "user" && onlyToolResults(l.Message.Content) {
+		return Event{}, false
+	}
 	return Event{Time: l.Timestamp, SessionID: l.SessionID}, true
+}
+
+// onlyToolResults reports whether content is a non-empty array of tool_result
+// items. A line that also holds text the human typed is still activity.
+func onlyToolResults(content json.RawMessage) bool {
+	var items []struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(content, &items); err != nil || len(items) == 0 {
+		return false
+	}
+	for _, item := range items {
+		if item.Type != toolResultType {
+			return false
+		}
+	}
+	return true
 }
