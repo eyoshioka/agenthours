@@ -2,7 +2,7 @@
 COVERAGE_MIN := 80
 
 # Renovate updates this, once a release is at least 3 days old.
-GOVULNCHECK_VERSION := v1.8.0
+GOVULNCHECK_VERSION := v1.9.0
 
 .PHONY: check fmt lint test cover vulncheck
 
