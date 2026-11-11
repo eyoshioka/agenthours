@@ -41,6 +41,7 @@ summaries.
 Each line of a transcript is one JSON object. Fields used:
 
 - `type`: only `user` and `assistant` events count as activity.
+- `message.content` of `user` events: a string for a typed prompt, or an array of items. Claude Code records each tool's output as a `user` event whose array holds only `tool_result` items; those are not activity. A `user` event that also holds `text` the human typed still is.
 - `timestamp`: RFC 3339 in UTC.
 - `sessionId`
 - `message.content[]` of `assistant` events: `tool_use` items carry `input.file_path` (Read, Edit, Write) or `input.command` (Bash).
@@ -51,6 +52,7 @@ Unknown event types and fields are ignored, because the format is not a public A
 
 - Merge the events of all tracked sessions into one timeline, so parallel sessions are not counted twice.
 - Count the gap between two consecutive events when it is at most `--break` (default 15m). A longer gap is a break and counts nothing.
+- Tool results are not events, so a tool running on its own does not keep the time going. Assistant events still count, so reading an answer right after a prompt is not a break; an agent that keeps answering without prompts still counts as active (see Open questions).
 - Days are split at midnight in `--tz` (default Asia/Tokyo). A gap that crosses midnight is split between the two days.
 
 ## Classification
@@ -88,4 +90,5 @@ Golden-file tests with small synthetic JSONL fixtures under `testdata/`. Never c
 ## Open questions
 
 - How the data reaches the site: commit the JSON to the portfolio repo, or publish it from this repo.
+- Whether assistant events should count only within `--break` after a prompt, so a long autonomous run ends as a break.
 - Whether a break should end at the last event or add a fixed tail (for example, time spent reading the last answer).
