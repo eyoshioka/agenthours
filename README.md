@@ -8,8 +8,9 @@ renders it as a calendar heatmap you can embed in a README, a GitHub profile
 or a personal site.
 
 > **Status: early development.** The CLI prints minutes per day for all
-> Claude Code sessions; filtering, history and the SVG are not there yet. See
-> [DESIGN.md](DESIGN.md) for the plan and the milestones.
+> Claude Code sessions and keeps them after the logs are deleted; filtering
+> and the SVG are not there yet. See [DESIGN.md](DESIGN.md) for the plan and
+> the milestones.
 
 ## Usage
 
@@ -28,6 +29,7 @@ One line per day: the date, a tab, and the active minutes (rounded down).
 | Flag | Default | Meaning |
 |---|---|---|
 | `-dir` | `~/.claude/projects` | Claude Code projects directory |
+| `-store` | `$XDG_DATA_HOME/agenthours/days.json` | File that keeps the daily totals (`~/.local/share` when `XDG_DATA_HOME` is unset) |
 | `-break` | `15m` | Longest gap between messages that still counts as active |
 | `-tz` | `Asia/Tokyo` | Time zone for day boundaries |
 
@@ -40,12 +42,16 @@ One line per day: the date, a tab, and the active minutes (rounded down).
   counted twice.
 - Optionally counts only sessions that touch chosen paths, such as your
   open-source or learning repositories.
-- Stores only daily totals. Message content never leaves the logs.
+- Claude Code deletes logs after 30 days by default, so each run merges the
+  daily totals into a store file and prints every stored day. A day that
+  still has logs is recomputed; when the result is lower than the stored
+  value (some of its logs are gone), the stored value is kept. Totals for
+  different `-break` or `-tz` values are stored separately.
+- Stores only dates and minutes. Message content never leaves the logs.
 
 ## Planned
 
 - Filtering by touched paths
-- A local store that keeps history after the agent deletes old logs
 - SVG and JSON output for embedding
 
 ## Development
