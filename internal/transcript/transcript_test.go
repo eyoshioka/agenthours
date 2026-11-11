@@ -236,3 +236,69 @@ func TestReadFSCloseError(t *testing.T) {
 		t.Errorf("ReadFS() error = %v, want it to name %s", err, s1Path)
 	}
 }
+
+func TestParseLinePaths(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want []string
+	}{
+		{
+			name: "file tools and a Bash command",
+			line: `{"type":"assistant","timestamp":"2026-10-08T10:00:00Z","sessionId":"s1","message":{"content":[` +
+				`{"type":"text","text":"see /not/a/tool/use"},` +
+				`{"type":"tool_use","name":"Read","input":{"file_path":"/repo/a.go"}},` +
+				`{"type":"tool_use","name":"NotebookEdit","input":{"notebook_path":"/repo/n.ipynb"}},` +
+				`{"type":"tool_use","name":"Grep","input":{"path":"/repo/internal","pattern":"x"}},` +
+				`{"type":"tool_use","name":"Bash","input":{"command":"cd ~/code/oss && go test ./..."}}]}}`,
+			want: []string{"/repo/a.go", "/repo/n.ipynb", "/repo/internal", "~/code/oss"},
+		},
+		{
+			name: "a relative path is not a file system path",
+			line: `{"type":"assistant","timestamp":"2026-10-08T10:00:00Z","sessionId":"s1","message":{"content":[` +
+				`{"type":"tool_use","name":"Artifact","input":{"path":"index.html"}}]}}`,
+		},
+		{
+			name: "a plain user message",
+			line: `{"type":"user","timestamp":"2026-10-08T10:00:00Z","sessionId":"s1","message":{"content":"open /etc/hosts"}}`,
+		},
+		{
+			name: "tool results are not tool uses",
+			line: `{"type":"user","timestamp":"2026-10-08T10:00:00Z","sessionId":"s1","message":{"content":[` +
+				`{"type":"tool_result","content":"/repo/a.go"}]}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := parseLine([]byte(tt.line))
+			if !ok {
+				t.Fatal("parseLine() ok = false, want true")
+			}
+			if !slices.Equal(got.Paths, tt.want) {
+				t.Errorf("Paths = %q, want %q", got.Paths, tt.want)
+			}
+		})
+	}
+}
+
+func TestCommandPaths(t *testing.T) {
+	tests := []struct {
+		command string
+		want    []string
+	}{
+		{command: "cd ~/code/oss && git status", want: []string{"~/code/oss"}},
+		{command: "go test ./..."},
+		{command: "cat /a/b.go|grep x", want: []string{"/a/b.go"}},
+		{command: "tool --dir=/tmp/x", want: []string{"/tmp/x"}},
+		{command: `ls "/x/y z"`, want: []string{"/x/y"}},
+		{command: "echo hi>~/out.txt; cd ~", want: []string{"~/out.txt", "~"}},
+		{command: "curl https://example.com/a"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.command, func(t *testing.T) {
+			if got := commandPaths(tt.command); !slices.Equal(got, tt.want) {
+				t.Errorf("commandPaths(%q) = %q, want %q", tt.command, got, tt.want)
+			}
+		})
+	}
+}
